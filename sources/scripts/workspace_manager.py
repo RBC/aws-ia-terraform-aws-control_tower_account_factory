@@ -105,12 +105,11 @@ def stage_run(
         "runs",
         run_id,
         [
-            "planned",
             "applied",
-            "cost_estimated",
             "planned_and_finished",
             "errored",
-            "policy_checked",
+            "discarded",
+            "canceled",
         ],
         api_token,
     )
@@ -336,7 +335,7 @@ def stage_destroy(
     terraform.wait_to_stabilize(
         "runs",
         run_id,
-        ["planned", "applied", "planned_and_finished", "policy_checked"],
+        ["applied", "planned_and_finished", "errored", "discarded", "canceled"],
         api_token,
     )
     return run_id

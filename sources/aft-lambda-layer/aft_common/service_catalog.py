@@ -11,6 +11,7 @@ from typing import (
     List,
     Literal,
     Mapping,
+    Optional,
     Sequence,
 )
 
@@ -19,6 +20,7 @@ from aft_common import ddb
 from aft_common.account_provisioning_framework import ProvisionRoles
 from aft_common.auth import AuthClient
 from aft_common.constants import SSM_PARAM_SC_PRODUCT_NAME
+from aft_common.organizations import OrganizationsAgent
 from aft_common.ssm import get_ssm_parameter_value
 from boto3.session import Session
 
@@ -147,8 +149,7 @@ def email_exists_in_batch(
     return False
 
 
-def provisioned_product_exists(record: Dict[str, Any]) -> bool:
-    # Go get all my accounts from SC (Not all PPs)
+def get_account_id_if_enrolled(record: Dict[str, Any]) -> Optional[str]:
     auth = AuthClient()
     ct_management_session = auth.get_ct_management_session(
         role_name=ProvisionRoles.SERVICE_ROLE_NAME
@@ -157,21 +158,33 @@ def provisioned_product_exists(record: Dict[str, Any]) -> bool:
         "control_tower_parameters"
     ]["AccountEmail"]
 
-    for batch in get_healthy_ct_product_batch(
-        ct_management_session=ct_management_session
-    ):
-        pp_ids = [product["Id"] for product in batch]
+    orgs_agent = OrganizationsAgent(ct_management_session=ct_management_session)
+    account = orgs_agent.get_account_by_email(account_email)
+    if account is None:
+        logger.info("Account not found in Organizations")
+        return None
 
-        if email_exists_in_batch(account_email, pp_ids, ct_management_session):
-            return True
-
-    # We processed all batches of accounts with healthy statuses, and did not find a match
-    # It is possible that the account exists, but does not have a healthy status
-    logger.info(
-        "Did not find account with matching email in healthy status in Account Factory"
+    sc_client: "ServiceCatalogClient" = ct_management_session.client(
+        "servicecatalog", config=utils.get_high_retry_botoconfig()
     )
+    kwargs: Dict[str, Any] = {
+        "Filters": {"SearchQuery": [f"physicalId:{account['Id']}"]},
+        "PageSize": 100,
+    }
+    while True:
+        response = sc_client.search_provisioned_products(**kwargs)
+        for product in response["ProvisionedProducts"]:
+            if ct_account_product_is_healthy(product):
+                logger.info("Healthy provisioned product found for account")
+                return account["Id"]
+        if "NextPageToken" not in response:
+            break
+        kwargs["PageToken"] = response["NextPageToken"]
 
-    return False
+    logger.info(
+        "Account exists in Organizations but has no healthy provisioned product"
+    )
+    return None
 
 
 def ct_account_product_is_healthy(product: ProvisionedProductAttributeTypeDef) -> bool:

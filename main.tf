@@ -59,6 +59,7 @@ module "aft_account_request_framework" {
   request_framework_archive_hash              = module.packaging.request_framework_archive_hash
   lambda_runtime_python_version               = local.lambda_runtime_python_version
   backup_recovery_point_retention             = var.backup_recovery_point_retention
+  backup_schedule                             = var.backup_schedule
   aft_customer_vpc_id                         = var.aft_customer_vpc_id
   aft_customer_private_subnets                = var.aft_customer_private_subnets
   sns_topic_enable_cmk_encryption             = var.sns_topic_enable_cmk_encryption

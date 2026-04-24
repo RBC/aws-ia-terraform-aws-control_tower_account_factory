@@ -70,6 +70,10 @@ variable "backup_recovery_point_retention" {
   type = number
 }
 
+variable "backup_schedule" {
+  type = string
+}
+
 variable "aft_enable_vpc" {
   type = bool
 }

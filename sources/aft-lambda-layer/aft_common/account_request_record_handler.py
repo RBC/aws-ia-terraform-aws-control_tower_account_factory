@@ -3,7 +3,7 @@
 #
 import json
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import aft_common.constants
 from aft_common import aft_utils as utils
@@ -16,7 +16,7 @@ from aft_common.account_request_framework import (
 )
 from aft_common.auth import AuthClient
 from aft_common.organizations import OrganizationsAgent
-from aft_common.service_catalog import provisioned_product_exists
+from aft_common.service_catalog import get_account_id_if_enrolled
 from aft_common.shared_account import shared_account_request
 
 logger = logging.getLogger("aft")
@@ -26,7 +26,7 @@ class AccountRequestRecordHandler:
     def __init__(self, auth: AuthClient, event: Dict[str, Any]) -> None:
         AccountRequestRecordHandler._validate_event(event=event)
         self._aft_management_session = auth.get_aft_management_session()
-        self._ct_management_sesion = auth.get_ct_management_session()
+        self._ct_management_session = auth.get_ct_management_session()
         self.record = event["Records"][0]
         self._old_image = self.record["dynamodb"].get("OldImage")
         self._new_image = self.record["dynamodb"].get("NewImage")
@@ -43,7 +43,7 @@ class AccountRequestRecordHandler:
 
     def _get_account_id(self, account_request: Dict[str, Any]) -> str:
         email = account_request["id"]
-        orgs = OrganizationsAgent(ct_management_session=self._ct_management_sesion)
+        orgs = OrganizationsAgent(ct_management_session=self._ct_management_session)
         return orgs.get_account_id_from_email(email=email)
 
     @staticmethod
@@ -87,17 +87,16 @@ class AccountRequestRecordHandler:
             return bool(old_image != new_image)
         return False
 
-    def handle_customization_request(self) -> None:
+    def handle_customization_request(self, account_id: Optional[str] = None) -> None:
         account_request = ddb.unmarshal_ddb_item(self.record["dynamodb"]["NewImage"])
-        account_id = self._get_account_id(
-            account_request=account_request
-        )  # Fetch from metadata/orgs?
+        if account_id is None:
+            account_id = self._get_account_id(account_request=account_request)
 
         account_provisioning_payload = build_aft_account_provisioning_framework_event(
             self.record
         )
         account_customization_payload = build_account_customization_payload(
-            ct_management_session=self._ct_management_sesion,
+            ct_management_session=self._ct_management_session,
             account_id=account_id,
             account_request=account_request,
             control_tower_event=account_provisioning_payload,
@@ -126,14 +125,13 @@ class AccountRequestRecordHandler:
             self.handle_customization_request()
 
         elif self.is_create_action:
-            # Vending new account
-            if not provisioned_product_exists(record=self.record):
+            enrolled_account_id = get_account_id_if_enrolled(record=self.record)
+            if enrolled_account_id is None:
                 logger.info("New account request received")
                 self.handle_account_request(new_account=True)
-            # Importing existing CT account into AFT and triggering customization
             elif not self.control_tower_parameters_updated:
                 logger.info("Customization request received for existing CT account")
-                self.handle_customization_request()
+                self.handle_customization_request(account_id=enrolled_account_id)
 
         # Updating CT parameter for existing AFT account
         elif self.is_update_action and self.control_tower_parameters_updated:

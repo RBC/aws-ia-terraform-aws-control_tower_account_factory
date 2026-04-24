@@ -92,6 +92,16 @@ variable "backup_recovery_point_retention" {
     error_message = "Value must be between 1 and 36500."
   }
 }
+
+variable "backup_schedule" {
+  description = "Cron expression for the DynamoDB backup schedule. Default = hourly"
+  type        = string
+  default     = "cron(0 * * * ? *)"
+  validation {
+    condition     = can(regex("^(cron|rate)\\(", var.backup_schedule))
+    error_message = "Value must be a valid AWS cron or rate expression (e.g. \"cron(0 * * * ? *)\" or \"rate(1 hour)\")."
+  }
+}
 variable "log_archive_bucket_object_expiration_days" {
   description = "Amount of days to keep the objects stored in the AFT logging bucket"
   type        = number
@@ -312,7 +322,7 @@ variable "account_provisioning_customizations_repo_branch" {
 variable "terraform_version" {
   description = "Terraform version being used for AFT"
   type        = string
-  default     = "1.6.0"
+  default     = "1.6.1"
   validation {
     condition     = can(regex("\\bv?\\d+(\\.\\d+)+[\\-\\w]*\\b", var.terraform_version))
     error_message = "Invalid value for var: terraform_version."

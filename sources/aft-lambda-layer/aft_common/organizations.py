@@ -112,6 +112,14 @@ class OrganizationsAgent:
         self.org_accounts = accounts
         return self.org_accounts
 
+    def get_account_by_email(self, email: str) -> Optional[AccountTypeDef]:
+        """Find an account by email using Organizations ListAccounts.
+        Returns the account if found, None otherwise."""
+        for account in self.get_all_org_accounts():
+            if emails_are_equal(email, account["Email"]):
+                return account
+        return None
+
     def get_all_org_ous(self) -> List[OrganizationalUnitTypeDef]:
         if self.org_ous is not None:
             return self.org_ous

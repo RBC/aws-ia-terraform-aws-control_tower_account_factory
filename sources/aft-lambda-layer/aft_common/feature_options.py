@@ -253,7 +253,7 @@ def put_event_selectors(session: Session, log_bucket_arns: List[str]) -> None:
                 "FieldSelectors": [
                     {"Field": "eventCategory", "Equals": ["Data"]},
                     {"Field": "resources.type", "Equals": ["AWS::S3::Object"]},
-                    {"Field": "resources.ARN", "NotEquals": log_bucket_arns},
+                    {"Field": "resources.ARN", "NotStartsWith": log_bucket_arns},
                 ],
             },
             {
@@ -277,7 +277,7 @@ def get_log_bucket_arns(session: Session) -> List[str]:
     bucket_arns = []
     for b in response["Buckets"]:
         bucket_arns.append(
-            f"arn:{utils.get_aws_partition(session)}:s3:::" + b["Name"] + "/*"
+            f"arn:{utils.get_aws_partition(session)}:s3:::" + b["Name"] + "/"
         )
     logger.info(str(bucket_arns))
     return bucket_arns

@@ -98,7 +98,7 @@ def build_aft_account_provisioning_framework_event(
         "account_request": account_request,
         "control_tower_event": {},
     }
-    logger.info(aft_account_provisioning_framework_event)
+    logger.info("Built account provisioning framework event for account request")
     return aft_account_provisioning_framework_event
 
 
@@ -238,25 +238,26 @@ def update_existing_account(
 
     control_tower_email_parameter = request["control_tower_parameters"]["AccountEmail"]
     target_product: Optional[ProvisionedProductAttributeTypeDef] = None
-    for batch in aft_common.service_catalog.get_healthy_ct_product_batch(
-        ct_management_session=ct_management_session
-    ):
-        for product in batch:
-            product_outputs_response = client.get_provisioned_product_outputs(
-                ProvisionedProductId=product["Id"],
-                OutputKeys=[
-                    "AccountEmail",
-                ],
-            )
-            provisioned_product_email = product_outputs_response["Outputs"][0][
-                "OutputValue"
-            ]
 
-            if utils.emails_are_equal(
-                provisioned_product_email, control_tower_email_parameter
-            ):
-                target_product = product
+    orgs_agent = OrganizationsAgent(ct_management_session=ct_management_session)
+    account = orgs_agent.get_account_by_email(control_tower_email_parameter)
+    if account is not None:
+        sc_client: ServiceCatalogClient = ct_management_session.client(
+            "servicecatalog", config=utils.get_high_retry_botoconfig()
+        )
+        kwargs: Dict[str, Any] = {
+            "Filters": {"SearchQuery": [f"physicalId:{account['Id']}"]},
+            "PageSize": 100,
+        }
+        while True:
+            response = sc_client.search_provisioned_products(**kwargs)
+            for product in response["ProvisionedProducts"]:
+                if aft_common.service_catalog.ct_account_product_is_healthy(product):
+                    target_product = product
+                    break
+            if target_product is not None or "NextPageToken" not in response:
                 break
+            kwargs["PageToken"] = response["NextPageToken"]
 
     if target_product is None:
         raise Exception(
